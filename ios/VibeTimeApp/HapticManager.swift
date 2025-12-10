@@ -11,8 +11,8 @@ enum HapticTiming {
 /// Configuration for time vibration
 struct VibeConfig {
     var use12HourFormat: Bool = false
-    var includeHours: Bool = true
-    var includeMinutes: Bool = true
+    var buzzInterval: Int = 5        // Minutes between buzzes
+    var startMinute: Int = 0         // First minute of hour to buzz
 }
 
 /// Manages haptic feedback for encoding time
@@ -33,39 +33,32 @@ class HapticManager {
     /// Check if currently vibrating
     var isBusy: Bool { isVibrating }
     
-    /// Vibrate the given time
-    func vibrateTime(hour: Int, minute: Int, config: VibeConfig, completion: @escaping () -> Void) {
+    /// Vibrate the given time (always vibrates both hour and minute)
+    func vibrateTime(hour: Int, minute: Int, completion: @escaping () -> Void) {
         guard !isVibrating else { return }
-        guard config.includeHours || config.includeMinutes else {
-            completion()
-            return
-        }
         
         isVibrating = true
         
-        // Convert hour for 12-hour format
-        var h = hour
-        if config.use12HourFormat {
-            if h == 0 {
-                h = 12
-            } else if h > 12 {
-                h -= 12
-            }
-        }
-        
-        // Build sequence
+        // Build sequence (always include both hour and minute)
         var sequence: [HapticEvent] = []
         
-        if config.includeHours && h > 0 {
-            sequence.append(contentsOf: buildNumberSequence(h))
+        if hour > 0 {
+            sequence.append(contentsOf: buildNumberSequence(hour))
         }
         
-        if config.includeMinutes && minute > 0 {
+        if minute > 0 {
             // Add separator if we had hours
             if !sequence.isEmpty {
                 sequence.append(.pause(HapticTiming.separatorPause))
             }
             sequence.append(contentsOf: buildNumberSequence(minute))
+        }
+        
+        // Handle 00:00 case
+        if sequence.isEmpty {
+            isVibrating = false
+            completion()
+            return
         }
         
         // Execute on background thread
@@ -125,26 +118,10 @@ class HapticManager {
     }
     
     /// Describe the pattern for a given time (for UI display)
-    static func describePattern(hour: Int, minute: Int, config: VibeConfig) -> String {
-        var h = hour
-        if config.use12HourFormat {
-            if h == 0 { h = 12 }
-            else if h > 12 { h -= 12 }
-        }
-        
-        var parts: [String] = []
-        
-        if config.includeHours {
-            let desc = describeNumber(h, label: "Hour")
-            parts.append(desc)
-        }
-        
-        if config.includeMinutes {
-            let desc = describeNumber(minute, label: "Min")
-            parts.append(desc)
-        }
-        
-        return parts.joined(separator: " | ")
+    static func describePattern(hour: Int, minute: Int) -> String {
+        let hourDesc = describeNumber(hour, label: "Hour")
+        let minDesc = describeNumber(minute, label: "Min")
+        return "\(hourDesc) | \(minDesc)"
     }
     
     private static func describeNumber(_ n: Int, label: String) -> String {

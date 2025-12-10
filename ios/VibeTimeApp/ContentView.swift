@@ -7,21 +7,13 @@ struct ContentView: View {
     
     // Settings
     @State private var use12HourFormat = false
-    @State private var includeHours = true
-    @State private var includeMinutes = true
+    @State private var buzzInterval = 5
+    @State private var startMinute = 0
     
     // Pattern display for test buttons
     @State private var patternDescription = "Tap a time to see pattern"
     
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    
-    var config: VibeConfig {
-        VibeConfig(
-            use12HourFormat: use12HourFormat,
-            includeHours: includeHours,
-            includeMinutes: includeMinutes
-        )
-    }
     
     var body: some View {
         ScrollView {
@@ -34,11 +26,16 @@ struct ContentView: View {
                 
                 // Clock display
                 Text(timeString)
-                    .font(.system(size: 60, weight: .light, design: .monospaced))
+                    .font(.system(size: 50, weight: .light, design: .monospaced))
                     .foregroundColor(.primary)
                     .onReceive(timer) { _ in
                         currentTime = Date()
                     }
+                
+                // Countdown to next buzz
+                Text("Next buzz in \(countdownString)")
+                    .font(.title3)
+                    .foregroundColor(Color(red: 0.91, green: 0.27, blue: 0.38))
                 
                 // Main button
                 Button(action: vibrateCurrentTime) {
@@ -76,9 +73,9 @@ struct ContentView: View {
                     
                     SettingRow(title: "12-hour format", isOn: $use12HourFormat)
                     Divider()
-                    SettingRow(title: "Include hours", isOn: $includeHours)
+                    NumberSettingRow(title: "Buzz interval (min)", value: $buzzInterval, range: 1...60)
                     Divider()
-                    SettingRow(title: "Include minutes", isOn: $includeMinutes)
+                    NumberSettingRow(title: "Start minute", value: $startMinute, range: 0...59)
                 }
                 .padding()
                 .background(Color(.systemGray6))
@@ -139,17 +136,68 @@ struct ContentView: View {
     }
     
     var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: currentTime)
+        let calendar = Calendar.current
+        var hour = calendar.component(.hour, from: currentTime)
+        let minute = calendar.component(.minute, from: currentTime)
+        let second = calendar.component(.second, from: currentTime)
+        
+        var suffix = ""
+        if use12HourFormat {
+            suffix = hour >= 12 ? " PM" : " AM"
+            if hour == 0 { hour = 12 }
+            else if hour > 12 { hour -= 12 }
+        }
+        
+        return String(format: "%02d:%02d:%02d%@", hour, minute, second, suffix)
+    }
+    
+    var countdownString: String {
+        let calendar = Calendar.current
+        let currentMinute = calendar.component(.minute, from: currentTime)
+        let currentSecond = calendar.component(.second, from: currentTime)
+        
+        var nextBuzzMinute = getNextBuzzMinute(currentMinute: currentMinute)
+        
+        // If we're exactly on a buzz minute, show next one (unless at second 0)
+        if nextBuzzMinute == currentMinute && currentSecond > 0 {
+            nextBuzzMinute = getNextBuzzMinute(currentMinute: currentMinute + 1)
+        }
+        
+        var minutesLeft: Int
+        var secondsLeft: Int
+        
+        if nextBuzzMinute >= 60 {
+            // Next hour
+            minutesLeft = (60 - currentMinute - 1) + (nextBuzzMinute - 60)
+            secondsLeft = 60 - currentSecond
+            if secondsLeft == 60 {
+                secondsLeft = 0
+                minutesLeft += 1
+            }
+        } else {
+            minutesLeft = nextBuzzMinute - currentMinute - 1
+            secondsLeft = 60 - currentSecond
+            if secondsLeft == 60 {
+                secondsLeft = 0
+                minutesLeft += 1
+            }
+        }
+        
+        return String(format: "%02d:%02d", minutesLeft, secondsLeft)
+    }
+    
+    func getNextBuzzMinute(currentMinute: Int) -> Int {
+        for m in currentMinute..<60 {
+            if (m - startMinute) % buzzInterval == 0 && m >= startMinute {
+                return m
+            }
+        }
+        // Next hour
+        return startMinute + 60
     }
     
     func vibrateCurrentTime() {
         guard !isVibrating else { return }
-        guard includeHours || includeMinutes else {
-            statusMessage = "Enable hours or minutes!"
-            return
-        }
         
         let calendar = Calendar.current
         let hour = calendar.component(.hour, from: currentTime)
@@ -159,29 +207,15 @@ struct ContentView: View {
     }
     
     func testTime(hour: Int, minute: Int) {
-        patternDescription = HapticManager.describePattern(hour: hour, minute: minute, config: config)
+        patternDescription = HapticManager.describePattern(hour: hour, minute: minute)
         vibrateTime(hour: hour, minute: minute)
     }
     
     func vibrateTime(hour: Int, minute: Int) {
         guard !isVibrating else { return }
-        guard includeHours || includeMinutes else {
-            statusMessage = "Enable hours or minutes!"
-            return
-        }
         
-        // Check for zero values
-        var h = hour
-        if use12HourFormat {
-            if h == 0 { h = 12 }
-            else if h > 12 { h -= 12 }
-        }
-        
-        let hasHourVibration = includeHours && h > 0
-        let hasMinuteVibration = includeMinutes && minute > 0
-        
-        if !hasHourVibration && !hasMinuteVibration {
-            statusMessage = "No vibration (value is 0)"
+        if hour == 0 && minute == 0 {
+            statusMessage = "No vibration (00:00)"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 statusMessage = ""
             }
@@ -191,7 +225,7 @@ struct ContentView: View {
         isVibrating = true
         statusMessage = "Vibrating..."
         
-        HapticManager.shared.vibrateTime(hour: hour, minute: minute, config: config) {
+        HapticManager.shared.vibrateTime(hour: hour, minute: minute) {
             isVibrating = false
             statusMessage = ""
         }
@@ -208,6 +242,30 @@ struct SettingRow: View {
             Spacer()
             Toggle("", isOn: $isOn)
                 .tint(Color(red: 0.91, green: 0.27, blue: 0.38))
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct NumberSettingRow: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            TextField("", value: $value, format: .number)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .frame(width: 60)
+                .padding(8)
+                .background(Color(.systemGray5))
+                .cornerRadius(8)
+                .onChange(of: value) { _, newValue in
+                    value = min(max(newValue, range.lowerBound), range.upperBound)
+                }
         }
         .padding(.vertical, 8)
     }

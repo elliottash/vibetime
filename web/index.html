@@ -35,8 +35,35 @@
             font-size: 4rem;
             font-weight: 300;
             font-variant-numeric: tabular-nums;
-            margin: 20px 0;
+            margin: 10px 0;
             color: #fff;
+        }
+        
+        .countdown {
+            font-size: 1.2rem;
+            color: #e94560;
+            margin-bottom: 15px;
+        }
+        
+        .countdown span {
+            font-weight: bold;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .number-input {
+            width: 70px;
+            padding: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1rem;
+            text-align: center;
+        }
+        
+        .number-input:focus {
+            outline: none;
+            border-color: #e94560;
         }
         
         .main-button {
@@ -205,6 +232,8 @@
     
     <div class="clock" id="clock">00:00:00</div>
     
+    <div class="countdown">Next buzz in <span id="countdown">--:--</span></div>
+    
     <button class="main-button" id="vibeBtn">Feel Current Time</button>
     
     <div class="status" id="status"></div>
@@ -225,19 +254,13 @@
         </div>
         
         <div class="setting-row">
-            <span>Include hours</span>
-            <label class="toggle">
-                <input type="checkbox" id="includeHours" checked>
-                <span class="toggle-slider"></span>
-            </label>
+            <span>Buzz interval (min)</span>
+            <input type="number" id="buzzInterval" class="number-input" value="5" min="1" max="60">
         </div>
         
         <div class="setting-row">
-            <span>Include minutes</span>
-            <label class="toggle">
-                <input type="checkbox" id="includeMinutes" checked>
-                <span class="toggle-slider"></span>
-            </label>
+            <span>Start minute</span>
+            <input type="number" id="startMinute" class="number-input" value="0" min="0" max="59">
         </div>
     </div>
     
@@ -272,13 +295,14 @@
         
         // Elements
         const clockEl = document.getElementById('clock');
+        const countdownEl = document.getElementById('countdown');
         const vibeBtn = document.getElementById('vibeBtn');
         const statusEl = document.getElementById('status');
         const patternEl = document.getElementById('patternDisplay');
         const warningEl = document.getElementById('warning');
         const format12El = document.getElementById('format12');
-        const includeHoursEl = document.getElementById('includeHours');
-        const includeMinutesEl = document.getElementById('includeMinutes');
+        const buzzIntervalEl = document.getElementById('buzzInterval');
+        const startMinuteEl = document.getElementById('startMinute');
         
         // Check vibration support
         const canVibrate = 'vibrate' in navigator;
@@ -286,17 +310,84 @@
             warningEl.style.display = 'block';
         }
         
-        // Update clock display
-        function updateClock() {
-            const now = new Date();
-            const h = String(now.getHours()).padStart(2, '0');
-            const m = String(now.getMinutes()).padStart(2, '0');
-            const s = String(now.getSeconds()).padStart(2, '0');
-            clockEl.textContent = `${h}:${m}:${s}`;
+        // Format time for display (respects 12h setting)
+        function formatTime(hours, minutes, seconds) {
+            let h = hours;
+            let suffix = '';
+            
+            if (format12El.checked) {
+                suffix = h >= 12 ? ' PM' : ' AM';
+                if (h === 0) h = 12;
+                else if (h > 12) h -= 12;
+            }
+            
+            const hStr = String(h).padStart(2, '0');
+            const mStr = String(minutes).padStart(2, '0');
+            const sStr = String(seconds).padStart(2, '0');
+            return `${hStr}:${mStr}:${sStr}${suffix}`;
         }
         
-        setInterval(updateClock, 1000);
-        updateClock();
+        // Calculate next buzz time
+        function getNextBuzzMinute(currentMinute, interval, startMinute) {
+            // Find the next minute >= currentMinute that matches the pattern
+            for (let m = currentMinute; m < 60; m++) {
+                if ((m - startMinute) % interval === 0 && m >= startMinute) {
+                    return m;
+                }
+            }
+            // Next hour, start from startMinute
+            return startMinute + 60; // indicates next hour
+        }
+        
+        // Calculate countdown to next buzz
+        function getCountdown(now) {
+            const interval = parseInt(buzzIntervalEl.value) || 5;
+            const startMin = parseInt(startMinuteEl.value) || 0;
+            const currentMinute = now.getMinutes();
+            const currentSecond = now.getSeconds();
+            
+            let nextBuzzMinute = getNextBuzzMinute(currentMinute, interval, startMin);
+            
+            // If we're exactly on a buzz minute, show next one (unless at second 0)
+            if (nextBuzzMinute === currentMinute && currentSecond > 0) {
+                nextBuzzMinute = getNextBuzzMinute(currentMinute + 1, interval, startMin);
+            }
+            
+            let minutesLeft, secondsLeft;
+            
+            if (nextBuzzMinute >= 60) {
+                // Next hour
+                minutesLeft = (60 - currentMinute - 1) + (nextBuzzMinute - 60);
+                secondsLeft = 60 - currentSecond;
+                if (secondsLeft === 60) {
+                    secondsLeft = 0;
+                    minutesLeft++;
+                }
+            } else {
+                minutesLeft = nextBuzzMinute - currentMinute - 1;
+                secondsLeft = 60 - currentSecond;
+                if (secondsLeft === 60) {
+                    secondsLeft = 0;
+                    minutesLeft++;
+                }
+            }
+            
+            return { minutes: minutesLeft, seconds: secondsLeft };
+        }
+        
+        // Update clock and countdown display
+        function updateDisplay() {
+            const now = new Date();
+            clockEl.textContent = formatTime(now.getHours(), now.getMinutes(), now.getSeconds());
+            
+            const countdown = getCountdown(now);
+            const minStr = String(countdown.minutes).padStart(2, '0');
+            const secStr = String(countdown.seconds).padStart(2, '0');
+            countdownEl.textContent = `${minStr}:${secStr}`;
+        }
+        
+        setInterval(updateDisplay, 1000);
+        updateDisplay();
         
         // Build pattern for a number using tally system
         function buildNumberPattern(n) {
@@ -321,93 +412,57 @@
             return pattern;
         }
         
-        // Build complete time pattern
-        function buildTimePattern(hour, minute, config) {
-            let h = hour;
+        // Build complete time pattern (always includes both hour and minute)
+        function buildTimePattern(hour, minute) {
+            const hourPattern = buildNumberPattern(hour);
+            const minutePattern = buildNumberPattern(minute);
             
-            // Handle 12-hour format
-            if (config.use12Hour) {
-                if (h === 0) h = 12;
-                else if (h > 12) h -= 12;
-            }
-            
-            const parts = [];
-            
-            if (config.includeHours) {
-                parts.push({ value: h, pattern: buildNumberPattern(h) });
-            }
-            
-            if (config.includeMinutes) {
-                parts.push({ value: minute, pattern: buildNumberPattern(minute) });
-            }
-            
-            // Combine patterns with separator
             const fullPattern = [];
-            parts.forEach((part, idx) => {
-                if (idx > 0 && fullPattern.length > 0) {
+            
+            if (hourPattern.length > 0) {
+                fullPattern.push(...hourPattern);
+            }
+            
+            if (minutePattern.length > 0) {
+                if (fullPattern.length > 0) {
                     fullPattern.push(SEPARATOR_PAUSE);
                 }
-                fullPattern.push(...part.pattern);
-            });
+                fullPattern.push(...minutePattern);
+            }
             
-            return { pattern: fullPattern, parts };
+            return fullPattern;
         }
         
         // Describe pattern for display
-        function describePattern(hour, minute, config) {
-            let h = hour;
-            if (config.use12Hour) {
-                if (h === 0) h = 12;
-                else if (h > 12) h -= 12;
-            }
-            
+        function describePattern(hour, minute) {
             const desc = [];
             
-            if (config.includeHours) {
-                const longs = Math.floor(h / 5);
-                const shorts = h % 5;
-                const parts = [];
-                if (longs > 0) parts.push(`${longs}L`);
-                if (shorts > 0) parts.push(`${shorts}S`);
-                desc.push(`Hour ${h}: ${parts.length ? parts.join('+') : '(none)'}`);
-            }
+            const hLongs = Math.floor(hour / 5);
+            const hShorts = hour % 5;
+            const hParts = [];
+            if (hLongs > 0) hParts.push(`${hLongs}L`);
+            if (hShorts > 0) hParts.push(`${hShorts}S`);
+            desc.push(`Hour ${hour}: ${hParts.length ? hParts.join('+') : '(none)'}`);
             
-            if (config.includeMinutes) {
-                const longs = Math.floor(minute / 5);
-                const shorts = minute % 5;
-                const parts = [];
-                if (longs > 0) parts.push(`${longs}L`);
-                if (shorts > 0) parts.push(`${shorts}S`);
-                desc.push(`Min ${minute}: ${parts.length ? parts.join('+') : '(none)'}`);
-            }
+            const mLongs = Math.floor(minute / 5);
+            const mShorts = minute % 5;
+            const mParts = [];
+            if (mLongs > 0) mParts.push(`${mLongs}L`);
+            if (mShorts > 0) mParts.push(`${mShorts}S`);
+            desc.push(`Min ${minute}: ${mParts.length ? mParts.join('+') : '(none)'}`);
             
             return desc.join(' | ');
-        }
-        
-        // Get current config
-        function getConfig() {
-            return {
-                use12Hour: format12El.checked,
-                includeHours: includeHoursEl.checked,
-                includeMinutes: includeMinutesEl.checked
-            };
         }
         
         // Vibrate time
         async function vibrateTime(hour, minute) {
             if (isVibrating) return;
             
-            const config = getConfig();
-            
-            if (!config.includeHours && !config.includeMinutes) {
-                statusEl.textContent = 'Enable hours or minutes!';
-                return;
-            }
-            
-            const { pattern } = buildTimePattern(hour, minute, config);
+            const pattern = buildTimePattern(hour, minute);
             
             if (pattern.length === 0) {
-                statusEl.textContent = 'No vibration (value is 0)';
+                statusEl.textContent = 'No vibration (00:00)';
+                setTimeout(() => { statusEl.textContent = ''; }, 2000);
                 return;
             }
             
@@ -415,15 +470,11 @@
             vibeBtn.disabled = true;
             statusEl.textContent = 'Vibrating...';
             
-            // Vibration API expects: [vibrate, pause, vibrate, pause, ...]
-            // Our pattern is already in this format
             if (canVibrate) {
                 navigator.vibrate(pattern);
             }
             
-            // Calculate total duration
             const totalDuration = pattern.reduce((a, b) => a + b, 0);
-            
             await new Promise(resolve => setTimeout(resolve, totalDuration));
             
             isVibrating = false;
@@ -441,24 +492,13 @@
             btn.addEventListener('click', () => {
                 const hour = parseInt(btn.dataset.hour);
                 const minute = parseInt(btn.dataset.minute);
-                const config = getConfig();
-                
-                patternEl.textContent = describePattern(hour, minute, config);
+                patternEl.textContent = describePattern(hour, minute);
                 vibrateTime(hour, minute);
             });
         });
         
-        // Update pattern display when settings change
-        [format12El, includeHoursEl, includeMinutesEl].forEach(el => {
-            el.addEventListener('change', () => {
-                const lastBtn = document.querySelector('.test-btn:hover, .test-btn:focus');
-                if (lastBtn) {
-                    const hour = parseInt(lastBtn.dataset.hour);
-                    const minute = parseInt(lastBtn.dataset.minute);
-                    patternEl.textContent = describePattern(hour, minute, getConfig());
-                }
-            });
-        });
+        // Update display when 12h format changes
+        format12El.addEventListener('change', updateDisplay);
     </script>
 </body>
 </html>

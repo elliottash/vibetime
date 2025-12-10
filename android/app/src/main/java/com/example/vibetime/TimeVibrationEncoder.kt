@@ -15,8 +15,8 @@ object VibeTiming {
  */
 data class VibeConfig(
     val use12HourFormat: Boolean = false,
-    val includeHours: Boolean = true,
-    val includeMinutes: Boolean = true
+    val buzzInterval: Int = 5,      // Minutes between buzzes
+    val startMinute: Int = 0        // First minute of hour to buzz
 )
 
 /**
@@ -32,18 +32,7 @@ object TimeVibrationEncoder {
      * timings: [0, vibrate1, pause1, vibrate2, pause2, ...]
      * amplitudes: [0, 255, 0, 255, 0, ...] where 255=vibrate, 0=pause
      */
-    fun buildTimePattern(hour: Int, minute: Int, config: VibeConfig): Pair<LongArray, IntArray> {
-        var h = hour
-        
-        // Handle 12-hour format
-        if (config.use12HourFormat) {
-            h = when {
-                h == 0 -> 12
-                h > 12 -> h - 12
-                else -> h
-            }
-        }
-        
+    fun buildTimePattern(hour: Int, minute: Int): Pair<LongArray, IntArray> {
         val timings = mutableListOf<Long>()
         val amplitudes = mutableListOf<Int>()
         
@@ -51,18 +40,15 @@ object TimeVibrationEncoder {
         timings.add(0)
         amplitudes.add(0)
         
-        var addedContent = false
-        
         // Add hour pattern
-        if (config.includeHours && h > 0) {
-            addNumberPattern(h, timings, amplitudes)
-            addedContent = true
+        if (hour > 0) {
+            addNumberPattern(hour, timings, amplitudes)
         }
         
         // Add minute pattern
-        if (config.includeMinutes && minute > 0) {
+        if (minute > 0) {
             // Add separator if we had hours
-            if (addedContent) {
+            if (hour > 0) {
                 timings.add(VibeTiming.SEPARATOR_PAUSE)
                 amplitudes.add(0)
             }
@@ -108,31 +94,18 @@ object TimeVibrationEncoder {
      * Build simple timing pattern for legacy vibration API
      * Returns array: [vibrate, pause, vibrate, pause, ...]
      */
-    fun buildLegacyPattern(hour: Int, minute: Int, config: VibeConfig): LongArray {
-        var h = hour
-        
-        if (config.use12HourFormat) {
-            h = when {
-                h == 0 -> 12
-                h > 12 -> h - 12
-                else -> h
-            }
-        }
-        
+    fun buildLegacyPattern(hour: Int, minute: Int): LongArray {
         val pattern = mutableListOf<Long>()
         
         // Add initial delay of 0
         pattern.add(0)
         
-        var addedContent = false
-        
-        if (config.includeHours && h > 0) {
-            addLegacyNumberPattern(h, pattern)
-            addedContent = true
+        if (hour > 0) {
+            addLegacyNumberPattern(hour, pattern)
         }
         
-        if (config.includeMinutes && minute > 0) {
-            if (addedContent) {
+        if (minute > 0) {
+            if (hour > 0) {
                 pattern.add(VibeTiming.SEPARATOR_PAUSE)
             }
             addLegacyNumberPattern(minute, pattern)
@@ -163,27 +136,10 @@ object TimeVibrationEncoder {
     /**
      * Describe the pattern for a given time (for UI display)
      */
-    fun describePattern(hour: Int, minute: Int, config: VibeConfig): String {
-        var h = hour
-        if (config.use12HourFormat) {
-            h = when {
-                h == 0 -> 12
-                h > 12 -> h - 12
-                else -> h
-            }
-        }
-        
-        val parts = mutableListOf<String>()
-        
-        if (config.includeHours) {
-            parts.add(describeNumber(h, "Hour"))
-        }
-        
-        if (config.includeMinutes) {
-            parts.add(describeNumber(minute, "Min"))
-        }
-        
-        return parts.joinToString(" | ")
+    fun describePattern(hour: Int, minute: Int): String {
+        val hourDesc = describeNumber(hour, "Hour")
+        val minDesc = describeNumber(minute, "Min")
+        return "$hourDesc | $minDesc"
     }
     
     private fun describeNumber(n: Int, label: String): String {
@@ -202,8 +158,8 @@ object TimeVibrationEncoder {
     /**
      * Calculate total duration of pattern
      */
-    fun calculateDuration(hour: Int, minute: Int, config: VibeConfig): Long {
-        val (timings, _) = buildTimePattern(hour, minute, config)
+    fun calculateDuration(hour: Int, minute: Int): Long {
+        val (timings, _) = buildTimePattern(hour, minute)
         return timings.sum()
     }
 }
