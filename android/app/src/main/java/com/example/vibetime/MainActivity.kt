@@ -1,6 +1,8 @@
 package com.example.vibetime
 
 import android.content.Context
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
@@ -73,11 +75,20 @@ fun VibeTimeScreen() {
     var use12HourFormat by remember { mutableStateOf(false) }
     var buzzInterval by remember { mutableStateOf(5) }
     var startMinute by remember { mutableStateOf(0) }
+    var audioEnabled by remember { mutableStateOf(false) }
+    var tallyBase by remember { mutableStateOf(5) }
     
-    // Update clock every second
+    // Update clock every second and check for scheduled buzz
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = Date()
+            
+            // Check for scheduled buzz
+            val cal = Calendar.getInstance().apply { time = currentTime }
+            if (!isVibrating && shouldBuzzNow(cal)) {
+                vibrateTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+            }
+            
             delay(1000)
         }
     }
@@ -108,6 +119,18 @@ fun VibeTimeScreen() {
             }
         }
         return startMinute + 60 // Next hour
+    }
+    
+    fun shouldBuzzNow(cal: Calendar): Boolean {
+        val currentMinute = cal.get(Calendar.MINUTE)
+        val currentSecond = cal.get(Calendar.SECOND)
+        
+        // Only buzz at second 0
+        if (currentSecond != 0) return false
+        
+        // Check if current minute matches the pattern
+        if (currentMinute < startMinute) return false
+        return (currentMinute - startMinute) % buzzInterval == 0
     }
     
     fun getCountdownString(cal: Calendar): String {
@@ -148,7 +171,7 @@ fun VibeTimeScreen() {
         }
         
         isVibrating = true
-        statusMessage = "Vibrating..."
+        statusMessage = if (audioEnabled) "Playing..." else "Vibrating..."
         
         // Get vibrator service
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -161,25 +184,64 @@ fun VibeTimeScreen() {
         
         // Build and execute pattern
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val (timings, amplitudes) = TimeVibrationEncoder.buildTimePattern(hour, minute)
+            val (timings, amplitudes) = TimeVibrationEncoder.buildTimePattern(hour, minute, tallyBase)
             if (timings.size > 1) {
                 val effect = VibrationEffect.createWaveform(timings, amplitudes, -1)
                 vibrator.vibrate(effect)
             }
         } else {
             @Suppress("DEPRECATION")
-            val pattern = TimeVibrationEncoder.buildLegacyPattern(hour, minute)
+            val pattern = TimeVibrationEncoder.buildLegacyPattern(hour, minute, tallyBase)
             if (pattern.size > 1) {
                 vibrator.vibrate(pattern, -1)
             }
         }
         
+        // Play audio if enabled
+        if (audioEnabled) {
+            playAudioPattern(hour, minute, tallyBase)
+        }
+        
         // Reset state after vibration completes
-        val duration = TimeVibrationEncoder.calculateDuration(hour, minute)
+        val duration = TimeVibrationEncoder.calculateDuration(hour, minute, tallyBase)
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             isVibrating = false
             statusMessage = ""
         }, duration)
+    }
+    
+    // Play audio beeps for the time pattern
+    fun playAudioPattern(hour: Int, minute: Int, base: Int) {
+        Thread {
+            try {
+                val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+                
+                fun playBeeps(n: Int) {
+                    val longs = n / base
+                    val shorts = n % base
+                    
+                    repeat(longs) { i ->
+                        if (i > 0) Thread.sleep(VibeTiming.INTER_PULSE_PAUSE)
+                        toneGen.startTone(ToneGenerator.TONE_DTMF_A, VibeTiming.LONG_PULSE.toInt())
+                        Thread.sleep(VibeTiming.LONG_PULSE)
+                    }
+                    
+                    repeat(shorts) { i ->
+                        if (i > 0 || longs > 0) Thread.sleep(VibeTiming.INTER_PULSE_PAUSE)
+                        toneGen.startTone(ToneGenerator.TONE_DTMF_D, VibeTiming.SHORT_PULSE.toInt())
+                        Thread.sleep(VibeTiming.SHORT_PULSE)
+                    }
+                }
+                
+                if (hour > 0) playBeeps(hour)
+                if (hour > 0 && minute > 0) Thread.sleep(VibeTiming.SEPARATOR_PAUSE)
+                if (minute > 0) playBeeps(minute)
+                
+                toneGen.release()
+            } catch (e: Exception) {
+                // Ignore audio errors
+            }
+        }.start()
     }
     
     Column(
@@ -274,6 +336,10 @@ fun VibeTimeScreen() {
                 NumberSettingRow("Buzz interval (min)", buzzInterval, 1..60) { buzzInterval = it }
                 Divider(color = Color(0xFF2A2A4E))
                 NumberSettingRow("Start minute", startMinute, 0..59) { startMinute = it }
+                Divider(color = Color(0xFF2A2A4E))
+                SettingRow("Audible beeps", audioEnabled) { audioEnabled = it }
+                Divider(color = Color(0xFF2A2A4E))
+                TallyBaseRow("Tally base", tallyBase) { tallyBase = it }
             }
         }
         
@@ -305,7 +371,7 @@ fun VibeTimeScreen() {
                         Pair(23, 59)
                     ).forEach { (hour, minute) ->
                         TestTimeButton(hour, minute) {
-                            patternDescription = TimeVibrationEncoder.describePattern(hour, minute)
+                            patternDescription = TimeVibrationEncoder.describePattern(hour, minute, tallyBase)
                             vibrateTime(hour, minute)
                         }
                     }
@@ -345,9 +411,9 @@ fun VibeTimeScreen() {
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text("Time is encoded as vibrations:", color = Color.Gray, fontSize = 14.sp)
-                Text("LONG (250ms) = 5 units", color = Color.White, fontSize = 14.sp)
+                Text("LONG (250ms) = $tallyBase units", color = Color.White, fontSize = 14.sp)
                 Text("SHORT (100ms) = 1 unit", color = Color.White, fontSize = 14.sp)
-                Text("Example: 14 = 2 LONG + 4 SHORT", color = Color.Gray, fontSize = 14.sp)
+                Text("Example: 14 = ${14 / tallyBase} LONG + ${14 % tallyBase} SHORT", color = Color.Gray, fontSize = 14.sp)
             }
         }
     }
@@ -405,6 +471,34 @@ fun NumberSettingRow(title: String, value: Int, range: IntRange, onValueChange: 
                 unfocusedTextColor = Color.White
             )
         )
+    }
+}
+
+@Composable
+fun TallyBaseRow(title: String, value: Int, onValueChange: (Int) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = title, color = Color.White)
+        Row {
+            listOf(5, 10).forEach { base ->
+                Button(
+                    onClick = { onValueChange(base) },
+                    modifier = Modifier.padding(start = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (value == base) Color(0xFFE94560) else Color(0xFF2A2A4E)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(text = base.toString(), fontSize = 14.sp)
+                }
+            }
+        }
     }
 }
 

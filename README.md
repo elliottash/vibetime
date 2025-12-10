@@ -5,20 +5,22 @@ A cross-platform vibration clock that encodes time into haptic patterns. Tap a b
 ## How It Works
 
 Time is encoded using a **tally-based system**:
-- **LONG vibration (250ms)** = 5 units
+- **LONG vibration (250ms)** = N units (configurable: 5 or 10)
 - **SHORT vibration (100ms)** = 1 unit
 
 Any number N is encoded as:
-- `floor(N / 5)` LONG pulses
-- `N % 5` SHORT pulses
+- `floor(N / tallyBase)` LONG pulses
+- `N % tallyBase` SHORT pulses
 
-### Example: 14:37
+### Example: 14:37 (with tally base = 5)
 
 | Component | Value | Encoding |
 |-----------|-------|----------|
 | Hour | 14 | 2 LONG + 4 SHORT |
 | *pause* | | 400ms silence |
 | Minute | 37 | 7 LONG + 2 SHORT |
+
+With tally base = 10: Hour 14 = 1 LONG + 4 SHORT, Minute 37 = 3 LONG + 7 SHORT
 
 ## Timing Constants
 
@@ -39,12 +41,15 @@ Any number N is encoded as:
    - 12/24 hour format toggle (affects display only)
    - Buzz interval (default: 5 minutes) - how often to vibrate
    - Start minute (default: 0) - first minute of each hour to buzz
+   - Audible beeps - play tones alongside vibration (all platforms)
+   - Tally base (5 or 10) - how many short pulses equal one long pulse
 
 ### Scheduled Buzzes
-The app calculates when the next buzz should occur based on:
+The app automatically vibrates/beeps at scheduled intervals:
 - `nextBuzzMinute = startMinute + (n * interval)` where n makes it >= current minute
 - Example: interval=5, start=0 → buzzes at :00, :05, :10, :15...
 - Example: interval=15, start=3 → buzzes at :03, :18, :33, :48
+- The countdown shows time until the next automatic buzz
 
 ### Test Examples
 Preset buttons to test specific times (00:00, 08:05, 14:37, 23:59)
@@ -58,12 +63,14 @@ Brief explanation of how the tally system works
 - Single-file PWA with `navigator.vibrate(pattern)`
 - Works on mobile Chrome/Firefox (not Safari)
 - PWA meta tags for "Add to Home Screen" support
+- **Audible beeps option**: plays tones (440Hz for LONG, 880Hz for SHORT) for testing on desktop or devices without vibration
 
 ### iOS (`ios/VibeTimeApp.xcodeproj`)
 - SwiftUI app using `UIImpactFeedbackGenerator`
   - `.heavy` style for LONG pulses
   - `.light` style for SHORT pulses
 - Runs vibration sequence on background thread
+- **Audible beeps option** using system sounds
 - Requires iOS 17.0+
 - **Haptics require physical device** (simulator doesn't vibrate)
 
@@ -71,6 +78,7 @@ Brief explanation of how the tally system works
 - Kotlin/Compose app using `VibrationEffect.createWaveform()`
 - Uses `VibratorManager` for API 31+
 - Fallback to legacy `Vibrator.vibrate()` for older devices
+- **Audible beeps option** using `ToneGenerator`
 - Requires API 26+ (Android 8.0)
 
 ## File Structure
@@ -107,6 +115,8 @@ Config {
   use12HourFormat: Bool = false    // Display format only
   buzzInterval: Int = 5            // Minutes between buzzes (1-60)
   startMinute: Int = 0             // First minute of hour to buzz (0-59)
+  tallyBase: Int = 5               // 5 or 10 - units per LONG pulse
+  audioEnabled: Bool = false       // Play audible beeps
 }
 ```
 
@@ -121,7 +131,6 @@ Config {
 
 ## Non-Goals
 
-- No timers or alarms
-- No scheduled or automatic vibrations
+- No timers or alarms (beyond the scheduled time buzzes)
 - No watch or wearable support
 - No notification integration

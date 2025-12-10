@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var use12HourFormat = false
     @State private var buzzInterval = 5
     @State private var startMinute = 0
+    @State private var audioEnabled = false
+    @State private var tallyBase = 5
     
     // Pattern display for test buttons
     @State private var patternDescription = "Tap a time to see pattern"
@@ -30,6 +32,7 @@ struct ContentView: View {
                     .foregroundColor(.primary)
                     .onReceive(timer) { _ in
                         currentTime = Date()
+                        checkScheduledBuzz()
                     }
                 
                 // Countdown to next buzz
@@ -76,6 +79,10 @@ struct ContentView: View {
                     NumberSettingRow(title: "Buzz interval (min)", value: $buzzInterval, range: 1...60)
                     Divider()
                     NumberSettingRow(title: "Start minute", value: $startMinute, range: 0...59)
+                    Divider()
+                    SettingRow(title: "Audible beeps", isOn: $audioEnabled)
+                    Divider()
+                    TallyBaseRow(title: "Tally base", value: $tallyBase)
                 }
                 .padding()
                 .background(Color(.systemGray6))
@@ -115,13 +122,13 @@ struct ContentView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
-                    Text("**LONG (250ms)** = 5 units")
+                    Text("**LONG (250ms)** = \(tallyBase) units")
                         .font(.subheadline)
                     
                     Text("**SHORT (100ms)** = 1 unit")
                         .font(.subheadline)
                     
-                    Text("Example: 14 = 2 LONG + 4 SHORT")
+                    Text("Example: 14 = \(14 / tallyBase) LONG + \(14 % tallyBase) SHORT")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -196,6 +203,29 @@ struct ContentView: View {
         return startMinute + 60
     }
     
+    func shouldBuzzNow() -> Bool {
+        let calendar = Calendar.current
+        let currentMinute = calendar.component(.minute, from: currentTime)
+        let currentSecond = calendar.component(.second, from: currentTime)
+        
+        // Only buzz at second 0
+        guard currentSecond == 0 else { return false }
+        
+        // Check if current minute matches the pattern
+        guard currentMinute >= startMinute else { return false }
+        return (currentMinute - startMinute) % buzzInterval == 0
+    }
+    
+    func checkScheduledBuzz() {
+        guard !isVibrating && shouldBuzzNow() else { return }
+        
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: currentTime)
+        let minute = calendar.component(.minute, from: currentTime)
+        
+        vibrateTime(hour: hour, minute: minute)
+    }
+    
     func vibrateCurrentTime() {
         guard !isVibrating else { return }
         
@@ -207,7 +237,7 @@ struct ContentView: View {
     }
     
     func testTime(hour: Int, minute: Int) {
-        patternDescription = HapticManager.describePattern(hour: hour, minute: minute)
+        patternDescription = HapticManager.describePattern(hour: hour, minute: minute, tallyBase: tallyBase)
         vibrateTime(hour: hour, minute: minute)
     }
     
@@ -223,12 +253,31 @@ struct ContentView: View {
         }
         
         isVibrating = true
-        statusMessage = "Vibrating..."
+        statusMessage = audioEnabled ? "Playing..." : "Vibrating..."
         
-        HapticManager.shared.vibrateTime(hour: hour, minute: minute) {
+        HapticManager.shared.vibrateTime(hour: hour, minute: minute, tallyBase: tallyBase, audioEnabled: audioEnabled) {
             isVibrating = false
             statusMessage = ""
         }
+    }
+}
+
+struct TallyBaseRow: View {
+    let title: String
+    @Binding var value: Int
+    
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Picker("", selection: $value) {
+                Text("5").tag(5)
+                Text("10").tag(10)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 100)
+        }
+        .padding(.vertical, 8)
     }
 }
 

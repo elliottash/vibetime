@@ -11,17 +11,27 @@ object VibeTiming {
 }
 
 /**
+ * Audio frequencies for beeps (Hz)
+ */
+object BeepFrequency {
+    const val LONG_TONE: Int = 440   // A4
+    const val SHORT_TONE: Int = 880  // A5
+}
+
+/**
  * Configuration for time vibration
  */
 data class VibeConfig(
     val use12HourFormat: Boolean = false,
     val buzzInterval: Int = 5,      // Minutes between buzzes
-    val startMinute: Int = 0        // First minute of hour to buzz
+    val startMinute: Int = 0,       // First minute of hour to buzz
+    val tallyBase: Int = 5,         // 5 or 10
+    val audioEnabled: Boolean = false // Play beeps
 )
 
 /**
  * Encodes time into vibration patterns using a tally system
- * LONG (250ms) = 5 units
+ * LONG (250ms) = tallyBase units (default 5)
  * SHORT (100ms) = 1 unit
  */
 object TimeVibrationEncoder {
@@ -32,7 +42,7 @@ object TimeVibrationEncoder {
      * timings: [0, vibrate1, pause1, vibrate2, pause2, ...]
      * amplitudes: [0, 255, 0, 255, 0, ...] where 255=vibrate, 0=pause
      */
-    fun buildTimePattern(hour: Int, minute: Int): Pair<LongArray, IntArray> {
+    fun buildTimePattern(hour: Int, minute: Int, tallyBase: Int = 5): Pair<LongArray, IntArray> {
         val timings = mutableListOf<Long>()
         val amplitudes = mutableListOf<Int>()
         
@@ -42,7 +52,7 @@ object TimeVibrationEncoder {
         
         // Add hour pattern
         if (hour > 0) {
-            addNumberPattern(hour, timings, amplitudes)
+            addNumberPattern(hour, timings, amplitudes, tallyBase)
         }
         
         // Add minute pattern
@@ -52,7 +62,7 @@ object TimeVibrationEncoder {
                 timings.add(VibeTiming.SEPARATOR_PAUSE)
                 amplitudes.add(0)
             }
-            addNumberPattern(minute, timings, amplitudes)
+            addNumberPattern(minute, timings, amplitudes, tallyBase)
         }
         
         return Pair(timings.toLongArray(), amplitudes.toIntArray())
@@ -61,9 +71,9 @@ object TimeVibrationEncoder {
     /**
      * Add vibration pattern for a single number to the lists
      */
-    private fun addNumberPattern(n: Int, timings: MutableList<Long>, amplitudes: MutableList<Int>) {
-        val longs = n / 5
-        val shorts = n % 5
+    private fun addNumberPattern(n: Int, timings: MutableList<Long>, amplitudes: MutableList<Int>, tallyBase: Int) {
+        val longs = n / tallyBase
+        val shorts = n % tallyBase
         
         var first = true
         
@@ -94,29 +104,29 @@ object TimeVibrationEncoder {
      * Build simple timing pattern for legacy vibration API
      * Returns array: [vibrate, pause, vibrate, pause, ...]
      */
-    fun buildLegacyPattern(hour: Int, minute: Int): LongArray {
+    fun buildLegacyPattern(hour: Int, minute: Int, tallyBase: Int = 5): LongArray {
         val pattern = mutableListOf<Long>()
         
         // Add initial delay of 0
         pattern.add(0)
         
         if (hour > 0) {
-            addLegacyNumberPattern(hour, pattern)
+            addLegacyNumberPattern(hour, pattern, tallyBase)
         }
         
         if (minute > 0) {
             if (hour > 0) {
                 pattern.add(VibeTiming.SEPARATOR_PAUSE)
             }
-            addLegacyNumberPattern(minute, pattern)
+            addLegacyNumberPattern(minute, pattern, tallyBase)
         }
         
         return pattern.toLongArray()
     }
     
-    private fun addLegacyNumberPattern(n: Int, pattern: MutableList<Long>) {
-        val longs = n / 5
-        val shorts = n % 5
+    private fun addLegacyNumberPattern(n: Int, pattern: MutableList<Long>, tallyBase: Int) {
+        val longs = n / tallyBase
+        val shorts = n % tallyBase
         
         repeat(longs) { i ->
             if (i > 0 || pattern.size > 1) {
@@ -136,17 +146,17 @@ object TimeVibrationEncoder {
     /**
      * Describe the pattern for a given time (for UI display)
      */
-    fun describePattern(hour: Int, minute: Int): String {
-        val hourDesc = describeNumber(hour, "Hour")
-        val minDesc = describeNumber(minute, "Min")
+    fun describePattern(hour: Int, minute: Int, tallyBase: Int = 5): String {
+        val hourDesc = describeNumber(hour, "Hour", tallyBase)
+        val minDesc = describeNumber(minute, "Min", tallyBase)
         return "$hourDesc | $minDesc"
     }
     
-    private fun describeNumber(n: Int, label: String): String {
+    private fun describeNumber(n: Int, label: String, tallyBase: Int): String {
         if (n == 0) return "$label $n: (none)"
         
-        val longs = n / 5
-        val shorts = n % 5
+        val longs = n / tallyBase
+        val shorts = n % tallyBase
         val components = mutableListOf<String>()
         
         if (longs > 0) components.add("${longs}L")
@@ -158,8 +168,8 @@ object TimeVibrationEncoder {
     /**
      * Calculate total duration of pattern
      */
-    fun calculateDuration(hour: Int, minute: Int): Long {
-        val (timings, _) = buildTimePattern(hour, minute)
+    fun calculateDuration(hour: Int, minute: Int, tallyBase: Int = 5): Long {
+        val (timings, _) = buildTimePattern(hour, minute, tallyBase)
         return timings.sum()
     }
 }
