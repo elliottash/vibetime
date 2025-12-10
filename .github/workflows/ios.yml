@@ -31,7 +31,7 @@ jobs:
         run: |
           xcodebuild build \
             -project ios/VibeTimeApp.xcodeproj \
-            -scheme VibeTimeApp \
+            -scheme VibeTime \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
@@ -40,7 +40,7 @@ jobs:
         run: |
           xcodebuild test \
             -project ios/VibeTimeApp.xcodeproj \
-            -scheme VibeTimeApp \
+            -scheme VibeTime \
             -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO || echo "No tests configured"
