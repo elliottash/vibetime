@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+*.swp
+*~
+
+# iOS
+ios/VibeTimeApp.xcodeproj/project.xcworkspace/
+ios/VibeTimeApp.xcodeproj/xcuserdata/
+ios/build/
+ios/*.xcuserstate
+ios/DerivedData/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.iml
+android/.idea/
+android/captures/
+
+# Web
+web/node_modules/
