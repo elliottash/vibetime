@@ -312,7 +312,7 @@ struct NumberSettingRow: View {
                 .padding(8)
                 .background(Color(.systemGray5))
                 .cornerRadius(8)
-                .onChange(of: value) { _, newValue in
+                .onChange(of: value) { newValue in
                     value = min(max(newValue, range.lowerBound), range.upperBound)
                 }
         }
