@@ -11,6 +11,12 @@ struct ContentView: View {
     @State private var startMinute = 0
     @State private var audioEnabled = false
     @State private var tallyBase = 5
+    @State private var hourOnlyMultiple = 0
+    // Timing (ms)
+    @State private var longPulseMs = 250
+    @State private var shortPulseMs = 100
+    @State private var interPulsePauseMs = 70
+    @State private var separatorPauseMs = 400
     
     // Pattern display for test buttons
     @State private var patternDescription = "Tap a time to see pattern"
@@ -83,6 +89,8 @@ struct ContentView: View {
                     SettingRow(title: "Audible beeps", isOn: $audioEnabled)
                     Divider()
                     TallyBaseRow(title: "Tally base", value: $tallyBase)
+                    Divider()
+                    NumberSettingRow(title: "Hour-only on multiples (min)", value: $hourOnlyMultiple, range: 0...60)
                 }
                 .padding()
                 .background(Color(.systemGray6))
@@ -108,6 +116,25 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(.systemGray5))
                         .cornerRadius(8)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(15)
+                
+                // Timing section
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("TIMING")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 10)
+
+                    NumberSettingRow(title: "Long pulse (ms)", value: $longPulseMs, range: 20...2000)
+                    Divider()
+                    NumberSettingRow(title: "Short pulse (ms)", value: $shortPulseMs, range: 10...1000)
+                    Divider()
+                    NumberSettingRow(title: "Inter-pulse pause (ms)", value: $interPulsePauseMs, range: 0...1000)
+                    Divider()
+                    NumberSettingRow(title: "Separator pause (ms)", value: $separatorPauseMs, range: 50...3000)
                 }
                 .padding()
                 .background(Color(.systemGray6))
@@ -244,6 +271,9 @@ struct ContentView: View {
     func vibrateTime(hour: Int, minute: Int) {
         guard !isVibrating else { return }
         
+        // Hour-only behavior on multiples
+        let includeMinute = !(hourOnlyMultiple > 0 && (minute % hourOnlyMultiple == 0))
+        
         if hour == 0 && minute == 0 {
             statusMessage = "No vibration (00:00)"
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -255,7 +285,21 @@ struct ContentView: View {
         isVibrating = true
         statusMessage = audioEnabled ? "Playing..." : "Vibrating..."
         
-        HapticManager.shared.vibrateTime(hour: hour, minute: minute, tallyBase: tallyBase, audioEnabled: audioEnabled) {
+        let timing = TimingConfig(
+            longPulse: Double(max(0, longPulseMs)) / 1000.0,
+            shortPulse: Double(max(0, shortPulseMs)) / 1000.0,
+            interPulsePause: Double(max(0, interPulsePauseMs)) / 1000.0,
+            separatorPause: Double(max(0, separatorPauseMs)) / 1000.0
+        )
+        
+        HapticManager.shared.vibrateTime(
+            hour: hour,
+            minute: minute,
+            tallyBase: tallyBase,
+            audioEnabled: audioEnabled,
+            timing: timing,
+            includeMinute: includeMinute
+        ) {
             isVibrating = false
             statusMessage = ""
         }

@@ -1,12 +1,22 @@
 import UIKit
 import AVFoundation
 
-/// Timing constants in seconds
+/// Timing configuration (seconds)
+struct TimingConfig {
+    let longPulse: Double
+    let shortPulse: Double
+    let interPulsePause: Double
+    let separatorPause: Double
+}
+
+/// Default timing constants in seconds
 enum HapticTiming {
-    static let longPulse: Double = 0.250
-    static let shortPulse: Double = 0.100
-    static let interPulsePause: Double = 0.070
-    static let separatorPause: Double = 0.400
+    static let `default` = TimingConfig(
+        longPulse: 0.250,
+        shortPulse: 0.100,
+        interPulsePause: 0.070,
+        separatorPause: 0.400
+    )
 }
 
 /// Audio frequencies for beeps
@@ -44,25 +54,31 @@ class HapticManager {
     /// Check if currently vibrating
     var isBusy: Bool { isVibrating }
     
-    /// Vibrate the given time with configurable tally base and optional audio
-    func vibrateTime(hour: Int, minute: Int, tallyBase: Int = 5, audioEnabled: Bool = false, completion: @escaping () -> Void) {
+/// Vibrate the given time with configurable tally base and optional audio
+    func vibrateTime(hour: Int,
+                     minute: Int,
+                     tallyBase: Int = 5,
+                     audioEnabled: Bool = false,
+                     timing: TimingConfig = HapticTiming.default,
+                     includeMinute: Bool = true,
+                     completion: @escaping () -> Void) {
         guard !isVibrating else { return }
         
         isVibrating = true
         
-        // Build sequence (always include both hour and minute)
+// Build sequence (hour always, minutes optional)
         var sequence: [HapticEvent] = []
         
         if hour > 0 {
-            sequence.append(contentsOf: buildNumberSequence(hour, tallyBase: tallyBase))
+            sequence.append(contentsOf: buildNumberSequence(hour, tallyBase: tallyBase, timing: timing))
         }
         
-        if minute > 0 {
+        if includeMinute && minute > 0 {
             // Add separator if we had hours
             if !sequence.isEmpty {
-                sequence.append(.pause(HapticTiming.separatorPause))
+                sequence.append(.pause(timing.separatorPause))
             }
-            sequence.append(contentsOf: buildNumberSequence(minute, tallyBase: tallyBase))
+            sequence.append(contentsOf: buildNumberSequence(minute, tallyBase: tallyBase, timing: timing))
         }
         
         // Handle 00:00 case
@@ -73,8 +89,8 @@ class HapticManager {
         }
         
         // Execute on background thread
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.executeSequence(sequence, audioEnabled: audioEnabled)
+DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.executeSequence(sequence, audioEnabled: audioEnabled, timing: timing)
             
             DispatchQueue.main.async {
                 self?.isVibrating = false
@@ -84,49 +100,49 @@ class HapticManager {
     }
     
     /// Build haptic sequence for a number using tally system
-    private func buildNumberSequence(_ n: Int, tallyBase: Int) -> [HapticEvent] {
+private func buildNumberSequence(_ n: Int, tallyBase: Int, timing: TimingConfig) -> [HapticEvent] {
         var events: [HapticEvent] = []
         let longs = n / tallyBase
         let shorts = n % tallyBase
         
         // Add LONG pulses (heavy)
         for i in 0..<longs {
-            if i > 0 {
-                events.append(.pause(HapticTiming.interPulsePause))
+if i > 0 {
+                events.append(.pause(timing.interPulsePause))
             }
             events.append(.heavy)
-            events.append(.pause(HapticTiming.longPulse))
+            events.append(.pause(timing.longPulse))
         }
         
         // Add SHORT pulses (light)
         for i in 0..<shorts {
-            if !events.isEmpty {
-                events.append(.pause(HapticTiming.interPulsePause))
+if !events.isEmpty {
+                events.append(.pause(timing.interPulsePause))
             }
             events.append(.light)
-            events.append(.pause(HapticTiming.shortPulse))
+            events.append(.pause(timing.shortPulse))
         }
         
         return events
     }
     
     /// Execute haptic sequence with optional audio
-    private func executeSequence(_ sequence: [HapticEvent], audioEnabled: Bool) {
+private func executeSequence(_ sequence: [HapticEvent], audioEnabled: Bool, timing: TimingConfig) {
         for event in sequence {
             switch event {
             case .heavy:
                 DispatchQueue.main.async { [weak self] in
                     self?.heavyGenerator.impactOccurred()
                 }
-                if audioEnabled {
-                    playTone(frequency: BeepFrequency.longTone, duration: HapticTiming.longPulse)
+if audioEnabled {
+                    playTone(frequency: BeepFrequency.longTone, duration: timing.longPulse)
                 }
             case .light:
                 DispatchQueue.main.async { [weak self] in
                     self?.lightGenerator.impactOccurred()
                 }
-                if audioEnabled {
-                    playTone(frequency: BeepFrequency.shortTone, duration: HapticTiming.shortPulse)
+if audioEnabled {
+                    playTone(frequency: BeepFrequency.shortTone, duration: timing.shortPulse)
                 }
             case .pause(let duration):
                 Thread.sleep(forTimeInterval: duration)
