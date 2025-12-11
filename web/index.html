@@ -278,6 +278,31 @@
                 <option value="10">10</option>
             </select>
         </div>
+
+        <div class="setting-row">
+            <span>Hour-only on multiples (min)</span>
+            <input type="number" id="hourOnlyMultiple" class="number-input" value="0" min="0" max="60" title="0 to disable; e.g., 30 = hour-only at :00 and :30">
+        </div>
+    </div>
+    
+    <div class="settings">
+        <h2>TIMING</h2>
+        <div class="setting-row">
+            <span>Long pulse (ms)</span>
+            <input type="number" id="longPulseMs" class="number-input" value="250" min="20" max="2000">
+        </div>
+        <div class="setting-row">
+            <span>Short pulse (ms)</span>
+            <input type="number" id="shortPulseMs" class="number-input" value="100" min="10" max="1000">
+        </div>
+        <div class="setting-row">
+            <span>Inter-pulse pause (ms)</span>
+            <input type="number" id="interPulsePauseMs" class="number-input" value="70" min="0" max="1000">
+        </div>
+        <div class="setting-row">
+            <span>Separator pause (ms)</span>
+            <input type="number" id="separatorPauseMs" class="number-input" value="400" min="50" max="3000">
+        </div>
     </div>
     
     <div class="settings">
@@ -300,11 +325,11 @@
     </div>
     
     <script>
-        // Timing constants (ms)
-        const LONG_PULSE = 250;
-        const SHORT_PULSE = 100;
-        const INTER_PULSE_PAUSE = 70;
-        const SEPARATOR_PAUSE = 400;
+        // Timing getters (ms)
+        function LONG_PULSE() { return Math.max(0, parseInt(document.getElementById('longPulseMs').value) || 250); }
+        function SHORT_PULSE() { return Math.max(0, parseInt(document.getElementById('shortPulseMs').value) || 100); }
+        function INTER_PULSE_PAUSE() { return Math.max(0, parseInt(document.getElementById('interPulsePauseMs').value) || 70); }
+        function SEPARATOR_PAUSE() { return Math.max(0, parseInt(document.getElementById('separatorPauseMs').value) || 400); }
         
         // State
         let isVibrating = false;
@@ -321,6 +346,7 @@
         const startMinuteEl = document.getElementById('startMinute');
         const audioEnabledEl = document.getElementById('audioEnabled');
         const tallyBaseEl = document.getElementById('tallyBase');
+        const hourOnlyMultipleEl = document.getElementById('hourOnlyMultiple');
         
         // Get current tally base
         function getTallyBase() {
@@ -471,21 +497,21 @@
             
             // Add LONG pulses
             for (let i = 0; i < longs; i++) {
-                if (pattern.length > 0) pattern.push(INTER_PULSE_PAUSE);
-                pattern.push(LONG_PULSE);
+                if (pattern.length > 0) pattern.push(INTER_PULSE_PAUSE());
+                pattern.push(LONG_PULSE());
             }
             
             // Add SHORT pulses
             for (let i = 0; i < shorts; i++) {
-                if (pattern.length > 0) pattern.push(INTER_PULSE_PAUSE);
-                pattern.push(SHORT_PULSE);
+                if (pattern.length > 0) pattern.push(INTER_PULSE_PAUSE());
+                pattern.push(SHORT_PULSE());
             }
             
             return pattern;
         }
         
         // Build complete time pattern (always includes both hour and minute)
-        function buildTimePattern(hour, minute) {
+        function buildTimePattern(hour, minute, includeMinute = true) {
             const hourPattern = buildNumberPattern(hour);
             const minutePattern = buildNumberPattern(minute);
             
@@ -495,9 +521,9 @@
                 fullPattern.push(...hourPattern);
             }
             
-            if (minutePattern.length > 0) {
+            if (includeMinute && minutePattern.length > 0) {
                 if (fullPattern.length > 0) {
-                    fullPattern.push(SEPARATOR_PAUSE);
+                    fullPattern.push(SEPARATOR_PAUSE());
                 }
                 fullPattern.push(...minutePattern);
             }
@@ -528,7 +554,7 @@
         }
         
         // Play audio pattern using beeps
-        async function playAudioPattern(hour, minute) {
+        async function playAudioPattern(hour, minute, includeMinute = true) {
             const base = getTallyBase();
             const longs_h = Math.floor(hour / base);
             const shorts_h = hour % base;
@@ -537,31 +563,33 @@
             
             // Play hour
             for (let i = 0; i < longs_h; i++) {
-                if (i > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE));
-                playBeep(440, LONG_PULSE); // A4 for long
-                await new Promise(r => setTimeout(r, LONG_PULSE));
+                if (i > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE()));
+                playBeep(440, LONG_PULSE()); // A4 for long
+                await new Promise(r => setTimeout(r, LONG_PULSE()));
             }
             for (let i = 0; i < shorts_h; i++) {
-                if (i > 0 || longs_h > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE));
-                playBeep(880, SHORT_PULSE); // A5 for short
-                await new Promise(r => setTimeout(r, SHORT_PULSE));
+                if (i > 0 || longs_h > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE()));
+                playBeep(880, SHORT_PULSE()); // A5 for short
+                await new Promise(r => setTimeout(r, SHORT_PULSE()));
             }
             
             // Separator
-            if ((longs_h > 0 || shorts_h > 0) && (longs_m > 0 || shorts_m > 0)) {
-                await new Promise(r => setTimeout(r, SEPARATOR_PAUSE));
+            if (includeMinute && (longs_h > 0 || shorts_h > 0) && (longs_m > 0 || shorts_m > 0)) {
+                await new Promise(r => setTimeout(r, SEPARATOR_PAUSE()));
             }
+            
+            if (!includeMinute) return;
             
             // Play minute
             for (let i = 0; i < longs_m; i++) {
-                if (i > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE));
-                playBeep(440, LONG_PULSE);
-                await new Promise(r => setTimeout(r, LONG_PULSE));
+                if (i > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE()));
+                playBeep(440, LONG_PULSE());
+                await new Promise(r => setTimeout(r, LONG_PULSE()));
             }
             for (let i = 0; i < shorts_m; i++) {
-                if (i > 0 || longs_m > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE));
-                playBeep(880, SHORT_PULSE);
-                await new Promise(r => setTimeout(r, SHORT_PULSE));
+                if (i > 0 || longs_m > 0) await new Promise(r => setTimeout(r, INTER_PULSE_PAUSE()));
+                playBeep(880, SHORT_PULSE());
+                await new Promise(r => setTimeout(r, SHORT_PULSE()));
             }
         }
         
@@ -569,7 +597,11 @@
         async function vibrateTime(hour, minute) {
             if (isVibrating) return;
             
-            const pattern = buildTimePattern(hour, minute);
+            // Determine whether to include minute based on hour-only setting
+            const hourOnlyMultiple = parseInt(hourOnlyMultipleEl.value) || 0;
+            const includeMinute = !(hourOnlyMultiple > 0 && (minute % hourOnlyMultiple === 0));
+
+            const pattern = buildTimePattern(hour, minute, includeMinute);
             
             if (pattern.length === 0) {
                 statusEl.textContent = 'No vibration (00:00)';
@@ -588,7 +620,7 @@
             
             // Play audio if enabled
             if (audioEnabledEl.checked) {
-                await playAudioPattern(hour, minute);
+                await playAudioPattern(hour, minute, includeMinute);
             } else {
                 const totalDuration = pattern.reduce((a, b) => a + b, 0);
                 await new Promise(resolve => setTimeout(resolve, totalDuration));
