@@ -73,6 +73,13 @@ jobs:
             <string>manual</string>
             <key>teamID</key>
             <string>P9RD477FPC</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.elliottash.vibetime</key>
+              <string>vibtime01</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>iPhone Distribution</string>
             <key>uploadSymbols</key>
             <false/>
           </dict>
