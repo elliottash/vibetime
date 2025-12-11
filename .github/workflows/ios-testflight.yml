@@ -30,15 +30,15 @@ jobs:
           echo "=== DerivedData cleanup ==="
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
       
-      - name: Setup simulator runtime
+      - name: Download iOS platform if needed
         run: |
-          RUNTIME=$(xcrun simctl list runtimes | grep -Eo 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9]+(-[0-9]+)*' | head -n1)
-          if [ -z "$RUNTIME" ]; then
-            echo "No iOS sim runtime found; continuing with device SDK only"
-          else
-            echo "Using runtime: $RUNTIME"
-            xcrun simctl create "CI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-14 "$RUNTIME" || true
+          # Check if iOS platform is available, download if not
+          if ! xcodebuild -showsdks | grep -q "iphoneos18"; then
+            echo "iOS 18 SDK not found, attempting to download..."
+            xcodebuild -downloadPlatform iOS || echo "Download failed or not needed"
           fi
+          # List available platforms after potential download
+          xcodebuild -showsdks | grep -i ios || true
       
       - name: Install Apple certificate and provisioning profile
         env:
@@ -73,10 +73,10 @@ jobs:
           xcodebuild archive \
             -project ios/VibeTimeApp.xcodeproj \
             -scheme VibeTime \
-            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath $RUNNER_TEMP/VibeTime.xcarchive \
             -configuration Release \
+            -allowProvisioningUpdates \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM=P9RD477FPC \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
