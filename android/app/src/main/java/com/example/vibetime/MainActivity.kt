@@ -370,23 +370,23 @@ fun VibeTimeScreen() {
                 
                 SettingRow("12-hour format", use12HourFormat) { use12HourFormat = it }
                 Divider(color = Color(0xFF2A2A4E))
-                NumberSettingRow("Buzz interval (min)", buzzInterval, 1..60) { buzzInterval = it }
+SliderRow("Buzz interval (min)", buzzInterval, 1..60, 1, "min") { buzzInterval = it }
                 Divider(color = Color(0xFF2A2A4E))
-                NumberSettingRow("Start minute", startMinute, 0..59) { startMinute = it }
+SliderRow("Start minute", startMinute, 0..59, 1, "min") { startMinute = it }
                 Divider(color = Color(0xFF2A2A4E))
-                NumberSettingRow("Hour-only on multiples (min)", hourOnlyMultiple, 0..60) { hourOnlyMultiple = it }
+SliderRow("Hour-only on multiples (min)", hourOnlyMultiple, 0..60, 1, "min") { hourOnlyMultiple = it }
                 Divider(color = Color(0xFF2A2A4E))
                 SettingRow("Audible beeps", audioEnabled) { audioEnabled = it }
                 Divider(color = Color(0xFF2A2A4E))
                 TallyBaseRow("Tally base", tallyBase) { tallyBase = it }
                 Divider(color = Color(0xFF2A2A4E))
-                SliderRow("Long pulse (ms)", longPulseMs, 20..2000, 10) { longPulseMs = it }
+                SliderRow("Long pulse (ms)", longPulseMs, 20..2000, 10, "ms") { longPulseMs = it }
                 Divider(color = Color(0xFF2A2A4E))
-                SliderRow("Short pulse (ms)", shortPulseMs, 10..1000, 10) { shortPulseMs = it }
+                SliderRow("Short pulse (ms)", shortPulseMs, 10..1000, 10, "ms") { shortPulseMs = it }
                 Divider(color = Color(0xFF2A2A4E))
-                SliderRow("Inter-pulse pause (ms)", interPulsePauseMs, 0..1000, 10) { interPulsePauseMs = it }
+                SliderRow("Inter-pulse pause (ms)", interPulsePauseMs, 0..1000, 10, "ms") { interPulsePauseMs = it }
                 Divider(color = Color(0xFF2A2A4E))
-                SliderRow("Separator pause (ms)", separatorPauseMs, 50..3000, 10) { separatorPauseMs = it }
+                SliderRow("Separator pause (ms)", separatorPauseMs, 50..3000, 10, "ms") { separatorPauseMs = it }
             }
         }
         
@@ -522,12 +522,12 @@ fun NumberSettingRow(title: String, value: Int, range: IntRange, onValueChange: 
 }
 
 @Composable
-fun SliderRow(title: String, value: Int, range: IntRange, step: Int, onChange: (Int) -> Unit) {
+fun SliderRow(title: String, value: Int, range: IntRange, step: Int, suffix: String = "ms", onChange: (Int) -> Unit) {
     var sliderValue by remember(value) { mutableStateOf(value.toFloat()) }
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = title, color = Color.White)
-            Text(text = "${sliderValue.toInt()} ms", color = Color.Gray)
+            Text(text = "${sliderValue.toInt()} $suffix", color = Color.Gray)
         }
         Slider(
             value = sliderValue,

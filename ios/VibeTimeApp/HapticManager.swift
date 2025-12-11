@@ -1,5 +1,6 @@
 import UIKit
 import AVFoundation
+import CoreHaptics
 
 /// Timing configuration (seconds)
 struct TimingConfig {
@@ -38,17 +39,25 @@ struct VibeConfig {
 class HapticManager {
     static let shared = HapticManager()
     
-    private let heavyGenerator = UIImpactFeedbackGenerator(style: .heavy)
-    private let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+    private var engine: CHHapticEngine?
+    private var supportsHaptics: Bool = false
     
     private var isVibrating = false
     private var audioEngine: AVAudioEngine?
     private var tonePlayer: AVAudioPlayerNode?
     
     private init() {
-        // Prepare generators
-        heavyGenerator.prepare()
-        lightGenerator.prepare()
+        // Setup CoreHaptics if available
+        let capabilities = CHHapticEngine.capabilitiesForHardware()
+        supportsHaptics = capabilities.supportsHaptics
+        if supportsHaptics {
+            do {
+                engine = try CHHapticEngine()
+                try engine?.start()
+            } catch {
+                supportsHaptics = false
+            }
+        }
     }
     
     /// Check if currently vibrating
@@ -130,18 +139,27 @@ if !events.isEmpty {
 private func executeSequence(_ sequence: [HapticEvent], audioEnabled: Bool, timing: TimingConfig) {
         for event in sequence {
             switch event {
-            case .heavy:
-                DispatchQueue.main.async { [weak self] in
-                    self?.heavyGenerator.impactOccurred()
+case .heavy:
+                if supportsHaptics {
+                    // Stronger perceived buzz via repeated transients
+                    playHapticRumble(duration: timing.longPulse, intensity: 1.0, sharpness: 0.2)
+                } else {
+                    // Fallback to system vibrate
+                    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                    Thread.sleep(forTimeInterval: timing.longPulse)
                 }
-if audioEnabled {
+                if audioEnabled {
                     playTone(frequency: BeepFrequency.longTone, duration: timing.longPulse)
                 }
-            case .light:
-                DispatchQueue.main.async { [weak self] in
-                    self?.lightGenerator.impactOccurred()
+case .light:
+                if supportsHaptics {
+                    playHapticTransient(intensity: 0.6, sharpness: 0.6)
+                    Thread.sleep(forTimeInterval: timing.shortPulse)
+                } else {
+                    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                    Thread.sleep(forTimeInterval: timing.shortPulse)
                 }
-if audioEnabled {
+                if audioEnabled {
                     playTone(frequency: BeepFrequency.shortTone, duration: timing.shortPulse)
                 }
             case .pause(let duration):
@@ -175,6 +193,56 @@ if audioEnabled {
         
         // Simple blocking tone using AudioServices as fallback
         AudioServicesPlaySystemSound(1057) // Tock sound as simple feedback
+    }
+    
+    /// Play CoreHaptics "rumble" by chaining transients over the duration
+    private func playHapticRumble(duration: Double, intensity: Float = 1.0, sharpness: Float = 0.2) {
+        guard supportsHaptics, duration > 0 else { return }
+        let step: Double = 0.05 // 50ms transients to feel continuous
+        var events: [CHHapticEvent] = []
+        var t: Double = 0
+        let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity)
+        let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+        while t < duration {
+            events.append(CHHapticEvent(eventType: .hapticTransient,
+                                        parameters: [intensityParam, sharpnessParam],
+                                        relativeTime: t))
+            t += step
+        }
+        do {
+            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let player = try engine?.makePlayer(with: pattern)
+            try engine?.start()
+            try player?.start(atTime: 0)
+        } catch { /* ignore */ }
+    }
+
+    /// Play CoreHaptics continuous pattern (kept for future tuning)
+    private func playHapticContinuous(duration: Double, intensity: Float, sharpness: Float) {
+        guard supportsHaptics, duration > 0 else { return }
+        let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity)
+        let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+        let event = CHHapticEvent(eventType: .hapticContinuous, parameters: [intensityParam, sharpnessParam], relativeTime: 0, duration: duration)
+        do {
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try engine?.makePlayer(with: pattern)
+            try engine?.start()
+            try player?.start(atTime: 0)
+        } catch { /* ignore */ }
+    }
+    
+    /// Play CoreHaptics transient tap
+    private func playHapticTransient(intensity: Float, sharpness: Float) {
+        guard supportsHaptics else { return }
+        let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity)
+        let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
+        let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensityParam, sharpnessParam], relativeTime: 0)
+        do {
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try engine?.makePlayer(with: pattern)
+            try engine?.start()
+            try player?.start(atTime: 0)
+        } catch { /* ignore */ }
     }
     
     /// Describe the pattern for a given time (for UI display)

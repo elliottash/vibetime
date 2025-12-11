@@ -82,11 +82,11 @@ struct ContentView: View {
                     
                     SettingRow(title: "12-hour format", isOn: $use12HourFormat)
                     Divider()
-                    NumberSettingRow(title: "Buzz interval (min)", value: $buzzInterval, range: 1...60)
+                    SliderIntRow(title: "Buzz interval (min)", value: $buzzInterval, range: 1...60, step: 1, unit: "min")
                     Divider()
-                    NumberSettingRow(title: "Start minute", value: $startMinute, range: 0...59)
+                    SliderIntRow(title: "Start minute", value: $startMinute, range: 0...59, step: 1, unit: "min")
                     Divider()
-                    SettingRow(title: "Audible beeps", isOn: $audioEnabled)
+                    SliderIntRow(title: "Hour-only on multiples (min)", value: $hourOnlyMultiple, range: 0...60, step: 1, unit: "min")
                     Divider()
                     TallyBaseRow(title: "Tally base", value: $tallyBase)
                     Divider()
@@ -128,13 +128,13 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                         .padding(.bottom, 10)
 
-                    NumberSettingRow(title: "Long pulse (ms)", value: $longPulseMs, range: 20...2000)
+SliderSettingRow(title: "Long pulse (ms)", value: $longPulseMs, range: 20...2000, step: 10)
                     Divider()
-                    NumberSettingRow(title: "Short pulse (ms)", value: $shortPulseMs, range: 10...1000)
+                    SliderSettingRow(title: "Short pulse (ms)", value: $shortPulseMs, range: 10...1000, step: 10)
                     Divider()
-                    NumberSettingRow(title: "Inter-pulse pause (ms)", value: $interPulsePauseMs, range: 0...1000)
+                    SliderSettingRow(title: "Inter-pulse pause (ms)", value: $interPulsePauseMs, range: 0...1000, step: 10)
                     Divider()
-                    NumberSettingRow(title: "Separator pause (ms)", value: $separatorPauseMs, range: 50...3000)
+                    SliderSettingRow(title: "Separator pause (ms)", value: $separatorPauseMs, range: 50...3000, step: 10)
                 }
                 .padding()
                 .background(Color(.systemGray6))
@@ -380,6 +380,63 @@ struct TestTimeButton: View {
                 .cornerRadius(8)
         }
     }
+}
+
+struct SliderSettingRow: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let step: Int
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(value) ms").font(.caption).foregroundColor(.secondary)
+            }
+            Slider(
+                value: Binding(
+                    get: { Double(value) },
+                    set: { value = Int($0).clamped(to: range) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
+            )
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+struct SliderIntRow: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let step: Int
+    let unit: String
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(value) \(unit)").font(.caption).foregroundColor(.secondary)
+            }
+            Slider(
+                value: Binding(
+                    get: { Double(value) },
+                    set: { value = Int($0).clamped(to: range) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
+            )
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+extension Int {
+    func clamped(to range: ClosedRange<Int>) -> Int { max(range.lowerBound, min(range.upperBound, self)) }
 }
 
 #Preview {
