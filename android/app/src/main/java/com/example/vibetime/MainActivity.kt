@@ -78,21 +78,6 @@ fun VibeTimeScreen() {
     var audioEnabled by remember { mutableStateOf(false) }
     var tallyBase by remember { mutableStateOf(5) }
     
-    // Update clock every second and check for scheduled buzz
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = Date()
-            
-            // Check for scheduled buzz
-            val cal = Calendar.getInstance().apply { time = currentTime }
-            if (!isVibrating && shouldBuzzNow(cal)) {
-                vibrateTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
-            }
-            
-            delay(1000)
-        }
-    }
-    
     // Helper functions for time display
     fun formatTime(cal: Calendar): String {
         var hour = cal.get(Calendar.HOUR_OF_DAY)
@@ -161,6 +146,40 @@ fun VibeTimeScreen() {
         return String.format("%02d:%02d", adjustedMinutes, adjustedSeconds)
     }
     
+    // Play audio beeps for the time pattern
+    fun playAudioPattern(hour: Int, minute: Int, base: Int) {
+        Thread {
+            try {
+                val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
+                
+                fun playBeeps(n: Int) {
+                    val longs = n / base
+                    val shorts = n % base
+                    
+                    repeat(longs) { i ->
+                        if (i > 0) Thread.sleep(VibeTiming.INTER_PULSE_PAUSE)
+                        toneGen.startTone(ToneGenerator.TONE_DTMF_A, VibeTiming.LONG_PULSE.toInt())
+                        Thread.sleep(VibeTiming.LONG_PULSE)
+                    }
+                    
+                    repeat(shorts) { i ->
+                        if (i > 0 || longs > 0) Thread.sleep(VibeTiming.INTER_PULSE_PAUSE)
+                        toneGen.startTone(ToneGenerator.TONE_DTMF_D, VibeTiming.SHORT_PULSE.toInt())
+                        Thread.sleep(VibeTiming.SHORT_PULSE)
+                    }
+                }
+                
+                if (hour > 0) playBeeps(hour)
+                if (hour > 0 && minute > 0) Thread.sleep(VibeTiming.SEPARATOR_PAUSE)
+                if (minute > 0) playBeeps(minute)
+                
+                toneGen.release()
+            } catch (e: Exception) {
+                // Ignore audio errors
+            }
+        }.start()
+    }
+    
     // Vibration function
     fun vibrateTime(hour: Int, minute: Int) {
         if (isVibrating) return
@@ -210,38 +229,19 @@ fun VibeTimeScreen() {
         }, duration)
     }
     
-    // Play audio beeps for the time pattern
-    fun playAudioPattern(hour: Int, minute: Int, base: Int) {
-        Thread {
-            try {
-                val toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
-                
-                fun playBeeps(n: Int) {
-                    val longs = n / base
-                    val shorts = n % base
-                    
-                    repeat(longs) { i ->
-                        if (i > 0) Thread.sleep(VibeTiming.INTER_PULSE_PAUSE)
-                        toneGen.startTone(ToneGenerator.TONE_DTMF_A, VibeTiming.LONG_PULSE.toInt())
-                        Thread.sleep(VibeTiming.LONG_PULSE)
-                    }
-                    
-                    repeat(shorts) { i ->
-                        if (i > 0 || longs > 0) Thread.sleep(VibeTiming.INTER_PULSE_PAUSE)
-                        toneGen.startTone(ToneGenerator.TONE_DTMF_D, VibeTiming.SHORT_PULSE.toInt())
-                        Thread.sleep(VibeTiming.SHORT_PULSE)
-                    }
-                }
-                
-                if (hour > 0) playBeeps(hour)
-                if (hour > 0 && minute > 0) Thread.sleep(VibeTiming.SEPARATOR_PAUSE)
-                if (minute > 0) playBeeps(minute)
-                
-                toneGen.release()
-            } catch (e: Exception) {
-                // Ignore audio errors
+    // Update clock every second and check for scheduled buzz
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentTime = Date()
+            
+            // Check for scheduled buzz
+            val cal = Calendar.getInstance().apply { time = currentTime }
+            if (!isVibrating && shouldBuzzNow(cal)) {
+                vibrateTime(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
             }
-        }.start()
+            
+            delay(1000)
+        }
     }
     
     Column(
