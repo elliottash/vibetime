@@ -37,35 +37,39 @@ jobs:
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
           
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           
           # Import certificate
-          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
-          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-          security import $CERTIFICATE_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+          CERTIFICATE_PATH="$RUNNER_TEMP/certificate.p12"
+          echo -n "$CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+          security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
           
           # Install provisioning profile
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          PROFILE_PATH="$PROFILE_DIR/profile.mobileprovision"
           echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o "$PROFILE_PATH"
       
       - name: Build archive
         run: |
           # Find the provisioning profile UUID
-          PROFILE_UUID=$(grep -aA1 'UUID' ~/Library/MobileDevice/Provisioning\\ Profiles/profile.mobileprovision | grep -o '[-A-Z0-9a-z]\\{36\\}')
+          PROFILE_PATH="$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
+          ls -l "$PROFILE_PATH" || echo "Provisioning profile not found at expected path"
+          PROFILE_UUID=$(grep -aA1 'UUID' "$PROFILE_PATH" | grep -o '[-A-Z0-9a-z]\{36\}')
+          echo "Using provisioning profile UUID: $PROFILE_UUID"
           
-          xcodebuild archive \\
-            -project ios/VibeTimeApp.xcodeproj \\
-            -scheme VibeTime \\
-            -archivePath $RUNNER_TEMP/VibeTime.xcarchive \\
-            -configuration Release \\
-            -allowProvisioningUpdates \\
-            CODE_SIGN_STYLE=Manual \\
-            DEVELOPMENT_TEAM=P9RD477FPC \\
-            CODE_SIGN_IDENTITY="iPhone Distribution" \\
+          xcodebuild archive \
+            -project ios/VibeTimeApp.xcodeproj \
+            -scheme VibeTime \
+            -archivePath $RUNNER_TEMP/VibeTime.xcarchive \
+            -configuration Release \
+            -allowProvisioningUpdates \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=P9RD477FPC \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID"
       
       - name: Export IPA
