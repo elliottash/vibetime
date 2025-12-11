@@ -1,12 +1,11 @@
 name: iOS TestFlight
 
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'ios/**'
-      - '.github/workflows/ios-testflight.yml'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only
+
+concurrency:
+  group: testflight
+  cancel-in-progress: true
 
 jobs:
   deploy:
