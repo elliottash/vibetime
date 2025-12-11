@@ -77,6 +77,13 @@ fun VibeTimeScreen() {
     var startMinute by remember { mutableStateOf(0) }
     var audioEnabled by remember { mutableStateOf(false) }
     var tallyBase by remember { mutableStateOf(5) }
+    var hourOnlyMultiple by remember { mutableStateOf(0) }
+
+    // Timing (ms)
+    var longPulseMs by remember { mutableStateOf(VibeTiming.LONG_PULSE.toInt()) }
+    var shortPulseMs by remember { mutableStateOf(VibeTiming.SHORT_PULSE.toInt()) }
+    var interPulsePauseMs by remember { mutableStateOf(VibeTiming.INTER_PULSE_PAUSE.toInt()) }
+    var separatorPauseMs by remember { mutableStateOf(VibeTiming.SEPARATOR_PAUSE.toInt()) }
     
     // Helper functions for time display
     fun formatTime(cal: Calendar): String {
@@ -191,6 +198,9 @@ fun VibeTimeScreen() {
         
         isVibrating = true
         statusMessage = if (audioEnabled) "Playing..." else "Vibrating..."
+
+        // Hour-only behavior
+        val includeMinute = !(hourOnlyMultiple > 0 && (minute % hourOnlyMultiple == 0))
         
         // Get vibrator service
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -201,9 +211,36 @@ fun VibeTimeScreen() {
             context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
         
-        // Build and execute pattern
+        // Build and execute pattern (dynamic timings)
+        fun buildDynamicTimePattern(h: Int, m: Int, base: Int, includeMin: Boolean): Pair<LongArray, IntArray> {
+            val timings = mutableListOf<Long>()
+            val amplitudes = mutableListOf<Int>()
+            timings.add(0); amplitudes.add(0)
+            fun addNumber(n: Int) {
+                val longs = n / base
+                val shorts = n % base
+                var first = true
+                repeat(longs) {
+                    if (!first) { timings.add(interPulsePauseMs.toLong()); amplitudes.add(0) }
+                    timings.add(longPulseMs.toLong()); amplitudes.add(255)
+                    first = false
+                }
+                repeat(shorts) {
+                    if (!first) { timings.add(interPulsePauseMs.toLong()); amplitudes.add(0) }
+                    timings.add(shortPulseMs.toLong()); amplitudes.add(128)
+                    first = false
+                }
+            }
+            if (h > 0) addNumber(h)
+            if (includeMin && m > 0) {
+                if (h > 0) { timings.add(separatorPauseMs.toLong()); amplitudes.add(0) }
+                addNumber(m)
+            }
+            return Pair(timings.toLongArray(), amplitudes.toIntArray())
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val (timings, amplitudes) = TimeVibrationEncoder.buildTimePattern(hour, minute, tallyBase)
+            val (timings, amplitudes) = buildDynamicTimePattern(hour, minute, tallyBase, includeMinute)
             if (timings.size > 1) {
                 val effect = VibrationEffect.createWaveform(timings, amplitudes, -1)
                 vibrator.vibrate(effect)
@@ -222,7 +259,7 @@ fun VibeTimeScreen() {
         }
         
         // Reset state after vibration completes
-        val duration = TimeVibrationEncoder.calculateDuration(hour, minute, tallyBase)
+        val duration = buildDynamicTimePattern(hour, minute, tallyBase, includeMinute).first.sum()
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             isVibrating = false
             statusMessage = ""
@@ -337,9 +374,19 @@ fun VibeTimeScreen() {
                 Divider(color = Color(0xFF2A2A4E))
                 NumberSettingRow("Start minute", startMinute, 0..59) { startMinute = it }
                 Divider(color = Color(0xFF2A2A4E))
+                NumberSettingRow("Hour-only on multiples (min)", hourOnlyMultiple, 0..60) { hourOnlyMultiple = it }
+                Divider(color = Color(0xFF2A2A4E))
                 SettingRow("Audible beeps", audioEnabled) { audioEnabled = it }
                 Divider(color = Color(0xFF2A2A4E))
                 TallyBaseRow("Tally base", tallyBase) { tallyBase = it }
+                Divider(color = Color(0xFF2A2A4E))
+                SliderRow("Long pulse (ms)", longPulseMs, 20..2000, 10) { longPulseMs = it }
+                Divider(color = Color(0xFF2A2A4E))
+                SliderRow("Short pulse (ms)", shortPulseMs, 10..1000, 10) { shortPulseMs = it }
+                Divider(color = Color(0xFF2A2A4E))
+                SliderRow("Inter-pulse pause (ms)", interPulsePauseMs, 0..1000, 10) { interPulsePauseMs = it }
+                Divider(color = Color(0xFF2A2A4E))
+                SliderRow("Separator pause (ms)", separatorPauseMs, 50..3000, 10) { separatorPauseMs = it }
             }
         }
         
@@ -470,6 +517,28 @@ fun NumberSettingRow(title: String, value: Int, range: IntRange, onValueChange: 
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White
             )
+        )
+    }
+}
+
+@Composable
+fun SliderRow(title: String, value: Int, range: IntRange, step: Int, onChange: (Int) -> Unit) {
+    var sliderValue by remember(value) { mutableStateOf(value.toFloat()) }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = title, color = Color.White)
+            Text(text = "${sliderValue.toInt()} ms", color = Color.Gray)
+        }
+        Slider(
+            value = sliderValue,
+            onValueChange = {
+                val stepped = (it / step).toInt() * step
+                val clamped = stepped.coerceIn(range.first, range.last)
+                sliderValue = clamped.toFloat()
+                onChange(clamped)
+            },
+            valueRange = range.first.toFloat()..range.last.toFloat(),
+            steps = ((range.last - range.first) / step) - 1
         )
     }
 }
