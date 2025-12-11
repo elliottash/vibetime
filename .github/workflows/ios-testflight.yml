@@ -46,13 +46,19 @@ jobs:
       
       - name: Build archive
         run: |
+          # Find the provisioning profile UUID
+          PROFILE_UUID=$(grep -aA1 'UUID' ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision | grep -o '[-A-Z0-9a-z]\{36\}')
+          
           xcodebuild archive \
             -project ios/VibeTimeApp.xcodeproj \
             -scheme VibeTime \
             -archivePath $RUNNER_TEMP/VibeTime.xcarchive \
             -destination 'generic/platform=iOS' \
             -configuration Release \
-            CODE_SIGN_STYLE=Manual
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=P9RD477FPC \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID"
       
       - name: Export IPA
         run: |
