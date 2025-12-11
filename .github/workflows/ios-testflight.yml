@@ -74,6 +74,7 @@ jobs:
             -project ios/VibeTimeApp.xcodeproj \
             -scheme VibeTime \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -archivePath $RUNNER_TEMP/VibeTime.xcarchive \
             -configuration Release \
             CODE_SIGN_STYLE=Manual \
